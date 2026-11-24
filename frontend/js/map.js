@@ -1,11 +1,94 @@
-const map = L.map("map").setView([-41.4693, -72.9424], 12);
+const PanoramaMap = (() => {
+  let map;
+  let markersLayer;
+  let userMarker;
+  let onMapClickCallback = null;
+  let onSelectActivityCallback = null;
 
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: "&copy; OpenStreetMap contributors"
-}).addTo(map);
+  const DEFAULT_CENTER = [-41.39, -72.92];
+  const DEFAULT_ZOOM = 11;
 
-// Marcador de prueba inicial
-L.marker([-41.3195, -72.9854])
-  .addTo(map)
-  .bindPopup("<strong>Punto de encuentro de prueba</strong><br>Puerto Varas")
-  .openPopup();
+  function init({ onMapClick, onSelectActivity }) {
+    onMapClickCallback = onMapClick;
+    onSelectActivityCallback = onSelectActivity;
+
+    map = L.map("map").setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    markersLayer = L.layerGroup().addTo(map);
+
+    map.on("click", (e) => {
+      if (typeof onMapClickCallback === "function") {
+        onMapClickCallback(e.latlng.lat, e.latlng.lng);
+      }
+    });
+  }
+
+  function distanceKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const toRad = (deg) => (deg * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function setUserLocation(lat, lng) {
+    if (userMarker) {
+      map.removeLayer(userMarker);
+    }
+    userMarker = L.circleMarker([lat, lng], { radius: 8 }).addTo(map);
+    userMarker.bindPopup("Tu ubicación de referencia").openPopup();
+    map.setView([lat, lng], 13);
+  }
+
+  function renderActivities(activities, isAdmin) {
+    markersLayer.clearLayers();
+
+    activities.forEach((act) => {
+      const marker = L.marker([act.lat, act.lng]);
+
+      const container = document.createElement("div");
+      const title = document.createElement("strong");
+      title.textContent = act.featured ? `★ ${act.title}` : act.title;
+
+      const meta = document.createElement("div");
+      meta.textContent = `${act.category} · ${act.zone === "puerto-varas" ? "Puerto Varas" : "Puerto Montt"}`;
+
+      const desc = document.createElement("p");
+      desc.textContent = act.description || "";
+
+      container.appendChild(title);
+      container.appendChild(meta);
+      if (act.description) container.appendChild(desc);
+
+      if (isAdmin) {
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.textContent = "Editar actividad";
+        editBtn.addEventListener("click", () => {
+          if (typeof onSelectActivityCallback === "function") {
+            onSelectActivityCallback(act);
+          }
+        });
+        container.appendChild(editBtn);
+      }
+
+      marker.bindPopup(container);
+      marker.addTo(markersLayer);
+    });
+  }
+
+  return {
+    init,
+    distanceKm,
+    setUserLocation,
+    renderActivities,
+  };
+})();

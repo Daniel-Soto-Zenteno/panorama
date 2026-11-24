@@ -1,10 +1,77 @@
 * {
   box-sizing: border-box;
+}
+
+body {
   margin: 0;
-  padding: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #ddd;
+}
+
+#app-title {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+#app-focus {
+  margin: 0.2rem 0 0;
+  font-size: 0.9rem;
+}
+
+#filters-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid #eee;
+}
+
+#workspace {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+}
+
+#map-section {
+  flex: 1 1 auto;
 }
 
 #map {
   width: 100%;
-  height: calc(100vh - 60px);
+  height: 72vh;
+  min-height: 460px;
+  border: 1px solid #ccc;
+}
+
+#admin-panel {
+  width: 340px;
+  flex: 0 0 340px;
+  padding: 1rem;
+  border: 1px solid #ccc;
+}
+
+#activity-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+#activity-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+#activity-form input[type="checkbox"] {
+  width: auto;
 }

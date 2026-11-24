@@ -3,22 +3,169 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Comunidades y Actividades Locales</title>
+  <title>Panorama — Actividades Comunitarias</title>
+
+  <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    crossorigin=""
   />
-  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="/static/css/styles.css" />
 </head>
 <body>
-  <header>
-    <h1>Comunidades y Actividades Locales</h1>
+  <header id="app-header">
+    <div>
+      <h1 id="app-title">Panorama</h1>
+      <p id="app-focus">
+        Descubre y comparte actividades comunitarias en Puerto Montt y Puerto Varas.
+      </p>
+    </div>
+
+    <div id="auth-section">
+      <span id="auth-status">Invitado</span>
+      <button type="button" id="btn-open-login">Iniciar sesión</button>
+      <button type="button" id="btn-logout" hidden>Cerrar sesión</button>
+    </div>
   </header>
-  <main>
-    <div id="map"></div>
+
+  <!-- Modal / formulario simple de inicio de sesión -->
+  <section id="login-panel" hidden>
+    <h2>Iniciar sesión</h2>
+    <form id="login-form">
+      <label>
+        Correo o usuario:
+        <input type="text" id="login-user" required />
+      </label>
+      <label>
+        Contraseña:
+        <input type="password" id="login-password" required />
+      </label>
+      <button type="submit">Entrar</button>
+      <button type="button" id="btn-cancel-login">Cancelar</button>
+    </form>
+    <p id="login-message"></p>
+  </section>
+
+  <main id="main-layout">
+    <!-- Filtros de actividades cercanas -->
+    <section id="filters-panel" aria-label="Filtros de actividades">
+      <label>
+        Zona:
+        <select id="filter-zone">
+          <option value="all">Puerto Montt y Puerto Varas</option>
+          <option value="puerto-montt">Puerto Montt</option>
+          <option value="puerto-varas">Puerto Varas</option>
+        </select>
+      </label>
+
+      <label>
+        Categoría:
+        <select id="filter-category">
+          <option value="all">Todas</option>
+          <option value="Deportes">Deportes</option>
+          <option value="Cultura">Cultura</option>
+          <option value="Ferias y Comunidad">Ferias y Comunidad</option>
+          <option value="Aire libre">Aire libre</option>
+        </select>
+      </label>
+
+      <label>
+        Radio máximo (km):
+        <select id="filter-radius">
+          <option value="all">Sin límite</option>
+          <option value="3">Hasta 3 km</option>
+          <option value="5">Hasta 5 km</option>
+          <option value="10">Hasta 10 km</option>
+          <option value="20">Hasta 20 km</option>
+        </select>
+      </label>
+
+      <button type="button" id="btn-use-location">Usar mi ubicación</button>
+      <button type="button" id="btn-reset-filters">Limpiar filtros</button>
+      <span id="results-count">0 actividades visibles</span>
+    </section>
+
+    <!-- Contenedor principal: Mapa grande + Panel Admin condicional -->
+    <div id="workspace">
+      <section id="map-section" aria-label="Mapa de actividades">
+        <div id="map"></div>
+      </section>
+
+      <!-- Solo visible cuando inicia sesión un admin -->
+      <aside id="admin-panel" hidden aria-label="Gestión de actividades">
+        <h2>Administrar actividades</h2>
+        <p id="admin-hint">
+          Haz clic en el mapa para elegir latitud y longitud, o selecciona una actividad para editarla.
+        </p>
+
+        <form id="activity-form">
+          <input type="hidden" id="activity-id" />
+
+          <label>
+            Título:
+            <input type="text" id="activity-title" required />
+          </label>
+
+          <label>
+            Categoría:
+            <select id="activity-category">
+              <option value="Deportes">Deportes</option>
+              <option value="Cultura">Cultura</option>
+              <option value="Ferias y Comunidad">Ferias y Comunidad</option>
+              <option value="Aire libre">Aire libre</option>
+            </select>
+          </label>
+
+          <label>
+            Zona:
+            <select id="activity-zone">
+              <option value="puerto-montt">Puerto Montt</option>
+              <option value="puerto-varas">Puerto Varas</option>
+            </select>
+          </label>
+
+          <label>
+            Latitud:
+            <input type="number" step="any" id="activity-lat" required />
+          </label>
+
+          <label>
+            Longitud:
+            <input type="number" step="any" id="activity-lng" required />
+          </label>
+
+          <label>
+            Fecha y hora:
+            <input type="datetime-local" id="activity-date" />
+          </label>
+
+          <label>
+            Descripción:
+            <textarea id="activity-description" rows="3"></textarea>
+          </label>
+
+          <label>
+            <input type="checkbox" id="activity-featured" />
+            Pin destacado
+          </label>
+
+          <div>
+            <button type="submit" id="btn-save-activity">Guardar actividad</button>
+            <button type="button" id="btn-clear-form">Nueva / Limpiar</button>
+            <button type="button" id="btn-delete-activity" hidden>Eliminar</button>
+          </div>
+        </form>
+      </aside>
+    </div>
   </main>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="js/map.js"></script>
+  <!-- Leaflet JS -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    crossorigin=""
+  ></script>
+<script src="/static/js/map.js"></script>
+<script src="/static/js/main.js"></script>
 </body>
 </html>
