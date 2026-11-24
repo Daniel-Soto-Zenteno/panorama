@@ -1,7 +1,19 @@
-node_modules/
+# Entorno virtual y archivos de Python
+.venv/
+venv/
 __pycache__/
 *.py[cod]
+*$py.class
+*.sqlite3
+
+# Variables de entorno locales (nunca subir secretos)
 .env
-.DS_Store
+
+# Dependencias y compilaciones frontend
+node_modules/
 dist/
 build/
+
+# Archivos del sistema / editor
+.DS_Store
+Thumbs.db
