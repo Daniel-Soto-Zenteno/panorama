@@ -14,10 +14,10 @@ const PanoramaMap = (() => {
 
     map = L.map("map").setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors",
-    }).addTo(map);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        }).addTo(map);
 
     markersLayer = L.layerGroup().addTo(map);
 
@@ -57,6 +57,14 @@ const PanoramaMap = (() => {
       const container = document.createElement("div");
       const title = document.createElement("strong");
       title.textContent = act.featured ? `★ ${act.title}` : act.title;
+
+      const timing = document.createElement("div");
+      if (act.all_year) {
+        timing.textContent = act.schedule ? `Todo el año · ${act.schedule}` : "Todo el año";
+      } else if (act.date) {
+        timing.textContent = `Fecha: ${act.date.replace("T", " ")}`;
+      }
+      if (timing.textContent) container.appendChild(timing);
 
       const meta = document.createElement("div");
       meta.textContent = `${act.category} · ${act.zone === "puerto-varas" ? "Puerto Varas" : "Puerto Montt"}`;

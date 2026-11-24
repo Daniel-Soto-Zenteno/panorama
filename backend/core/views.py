@@ -9,6 +9,28 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from .models import Actividad
 
 
+def _validar_coordenadas(lat, lng):
+    try:
+        lat_val = float(lat)
+        lng_val = float(lng)
+    except (TypeError, ValueError):
+        return None, None, "Latitud y longitud deben ser números válidos."
+
+    if not (-90.0 <= lat_val <= 90.0) or not (-180.0 <= lng_val <= 180.0):
+        return None, None, "Coordenadas fuera de rango geográfico válido."
+
+    return lat_val, lng_val, None
+
+
+def _parsear_fecha_opcional(fecha_raw):
+    if not fecha_raw:
+        return None, None
+    parsed = parse_datetime(str(fecha_raw))
+    if parsed is None:
+        return None, "Formato de fecha y hora inválido."
+    return parsed, None
+
+
 def home(request):
     return render(request, "index.html")
 
@@ -73,6 +95,8 @@ def _serialize_actividad(act):
         "zone": act.zona,
         "lat": act.latitud,
         "lng": act.longitud,
+        "all_year": act.todo_el_ano,
+        "schedule": act.horario,
         "date": act.fecha_hora.strftime("%Y-%m-%dT%H:%M") if act.fecha_hora else "",
         "description": act.descripcion,
         "featured": act.destacado,
@@ -110,21 +134,36 @@ def actividades_collection_view(request):
     if not titulo:
         return JsonResponse({"error": "El título es obligatorio."}, status=400)
 
-    try:
-        lat = float(data.get("lat"))
-        lng = float(data.get("lng"))
-    except (TypeError, ValueError):
-        return JsonResponse({"error": "Latitud y longitud deben ser números válidos."}, status=400)
+    lat, lng, coord_err = _validar_coordenadas(data.get("lat"), data.get("lng"))
+    if coord_err:
+        return JsonResponse({"error": coord_err}, status=400)
 
-    fecha_raw = data.get("date")
-    fecha_dt = parse_datetime(fecha_raw) if fecha_raw else None
+    categoria = data.get("category") or Actividad.Categoria.FERIAS
+    if categoria not in Actividad.Categoria.values:
+        return JsonResponse({"error": "Categoría no válida."}, status=400)
+
+    zona = data.get("zone") or Actividad.Zona.PUERTO_MONTT
+    if zona not in Actividad.Zona.values:
+        return JsonResponse({"error": "Zona no válida."}, status=400)
+
+    todo_el_ano = bool(data.get("all_year", False))
+    horario = (data.get("schedule") or "").strip()
+
+    if todo_el_ano:
+        fecha_dt = None
+    else:
+        fecha_dt, date_err = _parsear_fecha_opcional(data.get("date"))
+        if date_err:
+            return JsonResponse({"error": date_err}, status=400)
 
     act = Actividad.objects.create(
         titulo=titulo,
-        categoria=data.get("category") or Actividad.Categoria.FERIAS,
-        zona=data.get("zone") or Actividad.Zona.PUERTO_MONTT,
+        categoria=categoria,
+        zona=zona,
         latitud=lat,
         longitud=lng,
+        todo_el_ano=todo_el_ano,
+        horario=horario,
         fecha_hora=fecha_dt,
         descripcion=(data.get("description") or "").strip(),
         destacado=bool(data.get("featured", False)),
@@ -162,26 +201,43 @@ def actividad_detail_view(request, actividad_id):
         act.titulo = titulo
 
     if "category" in data and data["category"]:
+        if data["category"] not in Actividad.Categoria.values:
+            return JsonResponse({"error": "Categoría no válida."}, status=400)
         act.categoria = data["category"]
 
     if "zone" in data and data["zone"]:
+        if data["zone"] not in Actividad.Zona.values:
+            return JsonResponse({"error": "Zona no válida."}, status=400)
         act.zona = data["zone"]
 
-    if "lat" in data and "lng" in data:
-        try:
-            act.latitud = float(data["lat"])
-            act.longitud = float(data["lng"])
-        except (TypeError, ValueError):
-            return JsonResponse({"error": "Coordenadas inválidas."}, status=400)
-
-    if "date" in data:
-        act.fecha_hora = parse_datetime(data["date"]) if data["date"] else None
+    if "lat" in data or "lng" in data:
+        lat_input = data["lat"] if "lat" in data else act.latitud
+        lng_input = data["lng"] if "lng" in data else act.longitud
+        lat, lng, coord_err = _validar_coordenadas(lat_input, lng_input)
+        if coord_err:
+            return JsonResponse({"error": coord_err}, status=400)
+        act.latitud = lat
+        act.longitud = lng
 
     if "description" in data:
         act.descripcion = (data.get("description") or "").strip()
 
     if "featured" in data:
         act.destacado = bool(data["featured"])
+
+    if "all_year" in data:
+        act.todo_el_ano = bool(data["all_year"])
+        if act.todo_el_ano:
+            act.fecha_hora = None
+
+    if "schedule" in data:
+        act.horario = (data.get("schedule") or "").strip()
+
+    if "date" in data and not act.todo_el_ano:
+        fecha_dt, date_err = _parsear_fecha_opcional(data.get("date"))
+        if date_err:
+            return JsonResponse({"error": date_err}, status=400)
+        act.fecha_hora = fecha_dt
 
     act.save()
     return JsonResponse({"activity": _serialize_actividad(act)})

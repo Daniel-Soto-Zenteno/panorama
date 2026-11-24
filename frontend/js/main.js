@@ -32,6 +32,23 @@
   const activityFeaturedInput = document.getElementById("activity-featured");
   const btnClearForm = document.getElementById("btn-clear-form");
   const btnDeleteActivity = document.getElementById("btn-delete-activity");
+  const activityAllYearInput = document.getElementById("activity-all-year");
+  const activityScheduleInput = document.getElementById("activity-schedule");
+  const scheduleField = document.getElementById("schedule-field");
+  const dateField = document.getElementById("date-field");
+
+  function toggleDateOrScheduleFields() {
+    const isAllYear = activityAllYearInput.checked;
+    scheduleField.hidden = !isAllYear;
+    dateField.hidden = isAllYear;
+    if (isAllYear) {
+      activityDateInput.value = "";
+    } else {
+      activityScheduleInput.value = "";
+    }
+  }
+
+  activityAllYearInput.addEventListener("change", toggleDateOrScheduleFields);
 
   async function ensureCsrf() {
     if (csrfToken) return csrfToken;
@@ -132,10 +149,13 @@
     activityZoneInput.value = "puerto-montt";
     activityLatInput.value = "";
     activityLngInput.value = "";
+    activityAllYearInput.checked = false;
+    activityScheduleInput.value = "";
     activityDateInput.value = "";
     activityDescriptionInput.value = "";
     activityFeaturedInput.checked = false;
     btnDeleteActivity.hidden = true;
+    toggleDateOrScheduleFields();
   }
 
   function loadActivityIntoForm(act) {
@@ -146,10 +166,13 @@
     activityZoneInput.value = act.zone;
     activityLatInput.value = act.lat;
     activityLngInput.value = act.lng;
+    activityAllYearInput.checked = Boolean(act.all_year);
+    activityScheduleInput.value = act.schedule || "";
     activityDateInput.value = act.date || "";
     activityDescriptionInput.value = act.description || "";
     activityFeaturedInput.checked = Boolean(act.featured);
     btnDeleteActivity.hidden = false;
+    toggleDateOrScheduleFields();
   }
 
   // Autenticación
@@ -232,14 +255,18 @@
     e.preventDefault();
     if (!currentUser || !currentUser.is_admin) return;
 
-    const id = activityIdInput.value ? Number(activityIdInput.value) : null;
+    const id = activityIdInput && activityIdInput.value ? Number(activityIdInput.value) : null;
+    const isAllYear = activityAllYearInput.checked;
+
     const payload = {
       title: activityTitleInput.value.trim(),
       category: activityCategoryInput.value,
       zone: activityZoneInput.value,
       lat: Number(activityLatInput.value),
       lng: Number(activityLngInput.value),
-      date: activityDateInput.value || null,
+      all_year: isAllYear,
+      schedule: isAllYear ? activityScheduleInput.value.trim() : "",
+      date: !isAllYear && activityDateInput.value ? activityDateInput.value : null,
       description: activityDescriptionInput.value.trim(),
       featured: activityFeaturedInput.checked,
     };

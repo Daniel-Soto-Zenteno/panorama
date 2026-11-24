@@ -15,20 +15,23 @@ class Actividad(models.Model):
 
     titulo = models.CharField(max_length=150)
     categoria = models.CharField(
-        max_length=50,
-        choices=Categoria.choices,
-        default=Categoria.FERIAS,
-    )
+            max_length=50,
+            choices=Categoria.choices,
+            default=Categoria.FERIAS,
+        )
     zona = models.CharField(
-        max_length=30,
-        choices=Zona.choices,
-        default=Zona.PUERTO_MONTT,
-    )
+            max_length=30,
+            choices=Zona.choices,
+            default=Zona.PUERTO_MONTT,
+        )
     latitud = models.FloatField()
     longitud = models.FloatField()
+    todo_el_ano = models.BooleanField(default=False)
+    horario = models.CharField(max_length=120, blank=True)
     fecha_hora = models.DateTimeField(null=True, blank=True)
     descripcion = models.TextField(blank=True)
     destacado = models.BooleanField(default=False)
+    
     creado_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
