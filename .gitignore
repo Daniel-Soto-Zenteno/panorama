@@ -5,6 +5,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.sqlite3
+backend/media/
 
 # Variables de entorno locales (nunca subir secretos)
 .env
@@ -17,3 +18,10 @@ build/
 # Archivos del sistema / editor
 .DS_Store
 Thumbs.db
+# Desarrollo local (no publicar archivos de datos ni secretos)
+.local-secret-key
+.agents/
+backend/media/
+backend/staticfiles/
+.env.*
+!.env.example

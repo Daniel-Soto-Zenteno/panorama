@@ -1,185 +1,600 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Panorama — Actividades Comunitarias</title>
-
-  <!-- Leaflet CSS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    crossorigin=""
-  />
-  <link rel="stylesheet" href="/static/css/styles.css" />
-</head>
-<body>
-  <header id="app-header">
-    <div>
-      <h1 id="app-title">Panorama</h1>
-      <p id="app-focus">
-        Descubre y comparte actividades comunitarias en Puerto Montt y Puerto Varas.
-      </p>
-    </div>
-
-    <div id="auth-section">
-      <span id="auth-status">Invitado</span>
-      <button type="button" id="btn-open-login">Iniciar sesión</button>
-      <button type="button" id="btn-logout" hidden>Cerrar sesión</button>
-    </div>
-  </header>
-
-  <!-- Modal / formulario simple de inicio de sesión -->
-  <section id="login-panel" hidden>
-    <h2>Iniciar sesión</h2>
-    <form id="login-form">
-      <label>
-        Correo o usuario:
-        <input type="text" id="login-user" required />
-      </label>
-      <label>
-        Contraseña:
-        <input type="password" id="login-password" required />
-      </label>
-      <button type="submit">Entrar</button>
-      <button type="button" id="btn-cancel-login">Cancelar</button>
-    </form>
-    <p id="login-message"></p>
-  </section>
-
-  <main id="main-layout">
-    <!-- Filtros de actividades cercanas -->
-    <section id="filters-panel" aria-label="Filtros de actividades">
-      <label>
-        Zona:
-        <select id="filter-zone">
-          <option value="all">Puerto Montt y Puerto Varas</option>
-          <option value="puerto-montt">Puerto Montt</option>
-          <option value="puerto-varas">Puerto Varas</option>
-        </select>
-      </label>
-
-      <label>
-        Categoría:
-        <select id="filter-category">
-          <option value="all">Todas</option>
-          <option value="Deportes">Deportes</option>
-          <option value="Cultura">Cultura</option>
-          <option value="Ferias y Comunidad">Ferias y Comunidad</option>
-          <option value="Aire libre">Aire libre</option>
-        </select>
-      </label>
-
-      <label>
-        Radio máximo (km):
-        <select id="filter-radius">
-          <option value="all">Sin límite</option>
-          <option value="3">Hasta 3 km</option>
-          <option value="5">Hasta 5 km</option>
-          <option value="10">Hasta 10 km</option>
-          <option value="20">Hasta 20 km</option>
-        </select>
-      </label>
-
-      <button type="button" id="btn-use-location">Usar mi ubicación</button>
-      <button type="button" id="btn-reset-filters">Limpiar filtros</button>
-      <span id="results-count">0 actividades visibles</span>
-    </section>
-
-    <!-- Contenedor principal: Mapa grande + Panel Admin condicional -->
-    <div id="workspace">
-      <section id="map-section" aria-label="Mapa de actividades">
-        <div id="map"></div>
-      </section>
-
-      <!-- Solo visible cuando inicia sesión un admin -->
-      <aside id="admin-panel" hidden aria-label="Gestión de actividades">
-        <h2>Administrar actividades</h2>
-        <p id="admin-hint">
-          Haz clic en el mapa para elegir latitud y longitud, o selecciona una actividad para editarla.
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#356348" />
+    <title>Panorama — Tu comunidad, en el mapa</title>
+    <link rel="icon" type="image/svg+xml" href="/static/assets/icon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <link
+      rel="stylesheet"
+      href="/static/css/panorama.css?v={{ asset_version }}"
+    />
+  </head>
+  <body>
+    <a class="skip" href="#feed-body">Saltar a las publicaciones</a>
+    <header class="header">
+      <a href="#" class="wordmark" aria-label="Panorama, explorar"
+        ><svg class="icon" viewBox="0 0 24 28" aria-hidden="true">
+          <path d="M20 10c0 7-8 15-8 15S4 17 4 10a8 8 0 0 1 16 0Z" />
+          <path d="m8 13 4-7 4 7H8Z" /></svg
+        >panorama<b>.</b></a
+      ><label class="global-search"
+        ><i data-icon="search"></i
+        ><input
+          id="search"
+          type="search"
+          aria-label="Buscar publicaciones y comunidades"
+          placeholder="Buscar actividades o comunidades"
+          autocomplete="off"
+        /><span class="keycap" aria-hidden="true">/</span></label
+      >
+      <nav class="header-nav" aria-label="Principal">
+        <button data-nav="explore" aria-current="page">Explorar</button
+        ><button data-nav="communities">Comunidades</button
+        ><button data-nav="saved">Guardados</button>
+      </nav>
+      <div class="header-actions">
+        <button
+          id="new-post"
+          class="primary create-button"
+          aria-label="Crear publicación"
+        >
+          <i data-icon="plus"></i><span>Crear publicación</span></button
+        ><button
+          id="open-profile"
+          class="profile-button"
+          aria-label="Abrir tu perfil"
+        >
+          <i data-icon="user"></i>
+        </button>
+      </div>
+    </header>
+    <main class="explorer" id="explorer">
+      <div
+        id="map"
+        role="region"
+        aria-label="Mapa de actividades de Puerto Montt y Puerto Varas"
+      ></div>
+      <div class="map-toolbar" aria-label="Filtros de publicaciones">
+        <button id="filter-open">
+          <i data-icon="filters"></i>Filtros<span
+            class="filter-count"
+            id="filter-count"
+            hidden
+            >0</span
+          ></button
+        ><label
+          ><span class="sr-only">Ciudad</span
+          ><select id="filter-city">
+            <option value="all">Ambas ciudades</option>
+            <option value="montt">Puerto Montt</option>
+            <option value="varas">Puerto Varas</option>
+          </select></label
+        ><label
+          ><span class="sr-only">Interés</span
+          ><select id="filter-category">
+            <option value="all">Todos los intereses</option>
+            <option value="sport">Deportes</option>
+            <option value="outdoor">Aire libre</option>
+            <option value="culture">Arte y cultura</option>
+            <option value="local">Ferias y barrio</option>
+          </select></label
+        ><label
+          ><span class="sr-only">Fecha</span
+          ><select id="filter-date">
+            <option value="all">Cualquier fecha</option>
+            <option value="today">Hoy</option>
+            <option value="weekend">Este fin de semana</option>
+            <option value="permanent">Lugares de encuentro</option>
+          </select></label
+        ><label
+          ><span class="sr-only">Tipo de actividad</span
+          ><select id="filter-pace">
+            <option value="all">A tu ritmo</option>
+            <option value="active">Más movimiento</option>
+            <option value="calm">Algo tranquilo</option>
+          </select></label
+        >
+      </div>
+      <div class="map-actions">
+        <button id="map-fit"><i data-icon="locate"></i>Ver toda la zona</button
+        ><button
+          id="map-style"
+          class="style-toggle icon-button"
+          aria-label="Estilo del mapa"
+          aria-expanded="false"
+        >
+          <i data-icon="layers"></i>
+        </button>
+      </div>
+      <div class="map-style-menu" id="map-style-menu" hidden>
+        <button data-map-style="soft" aria-pressed="true">Suave</button
+        ><button data-map-style="original" aria-pressed="false">
+          OpenStreetMap original
+        </button>
+      </div>
+      <button id="search-area" class="search-area" hidden>
+        <i data-icon="search"></i>Buscar en esta zona
+      </button>
+      <div class="map-bottom">
+        <p id="zoom-caption" class="zoom-caption">
+          Acerca el mapa para ver más publicaciones
         </p>
-
-        <form id="activity-form">
-          <input type="hidden" id="activity-id" />
-
-          <label>
-            Título:
-            <input type="text" id="activity-title" required />
-          </label>
-
-          <label>
-            Categoría:
-            <select id="activity-category">
-              <option value="Deportes">Deportes</option>
-              <option value="Cultura">Cultura</option>
-              <option value="Ferias y Comunidad">Ferias y Comunidad</option>
-              <option value="Aire libre">Aire libre</option>
-            </select>
-          </label>
-
-          <label>
-            Zona:
-            <select id="activity-zone">
-              <option value="puerto-montt">Puerto Montt</option>
-              <option value="puerto-varas">Puerto Varas</option>
-            </select>
-          </label>
-
-          <label>
-            Latitud:
-            <input type="number" step="any" id="activity-lat" required />
-          </label>
-
-          <label>
-            Longitud:
-            <input type="number" step="any" id="activity-lng" required />
-          </label>
-
-          <label>
-            <input type="checkbox" id="activity-all-year" />
-            Disponible todo el año (por horario)
-          </label>
-
-          <label id="schedule-field">
-            Horario habitual:
-            <input
-              type="text"
-              id="activity-schedule"
-              placeholder="Ej: Todo el año · 08:30 a 17:00"
-            />
-          </label>
-
-          <label id="date-field">
-            Fecha y hora específica:
-            <input type="datetime-local" id="activity-date" />
-          </label>
-
-          <label>
-            Descripción:
-            <textarea id="activity-description" rows="3"></textarea>
-          </label>
-
-          <label>
-            <input type="checkbox" id="activity-featured" />
-            Pin destacado
-          </label>
-
-          <div>
-            <button type="submit" id="btn-save-activity">Guardar actividad</button>
-            <button type="button" id="btn-clear-form">Nueva / Limpiar</button>
-            <button type="button" id="btn-delete-activity" hidden>Eliminar</button>
+        <div class="map-legend">
+          <span><i class="legend-dot filled"></i>Destacadas</span
+          ><span><i class="legend-dot"></i>Al acercarte</span>
+        </div>
+      </div>
+      <section class="feed" id="feed" aria-label="Publicaciones y comunidades">
+        <div class="feed-handle" aria-hidden="true"></div>
+        <div class="feed-header">
+          <div class="feed-title-row">
+            <h1 id="feed-title">Explora cerca de ti</h1>
+            <button
+              id="feed-collapse"
+              class="collapse-button"
+              aria-expanded="true"
+              aria-label="Recoger publicaciones"
+            >
+              <i data-icon="chevron"></i>
+            </button>
           </div>
-        </form>
-      </aside>
-    </div>
-  </main>
-
-  <!-- Leaflet JS -->
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    crossorigin=""
-  ></script>
-<script src="/static/js/map.js"></script>
-<script src="/static/js/main.js"></script>
-</body>
+          <p class="region-line" id="region-line">
+            <i data-icon="pin"></i>Puerto Montt y Puerto Varas
+          </p>
+          <div class="feed-tabs" role="tablist" aria-label="Contenido">
+            <button id="tab-posts" role="tab" aria-selected="true">
+              Publicaciones</button
+            ><button id="tab-communities" role="tab" aria-selected="false">
+              Comunidades
+            </button>
+          </div>
+          <div id="topic-chips" class="community-chip-list" hidden></div>
+        </div>
+        <div class="feed-tools">
+          <span id="result-count" role="status" aria-live="polite"
+            >Cargando…</span
+          ><select id="sort" aria-label="Ordenar publicaciones">
+            <option value="featured">Destacadas primero</option>
+            <option value="recent">Más recientes</option>
+            <option value="comments">Más comentadas</option></select
+          ><button id="clear-filters" class="clear-filters" hidden>
+            Limpiar
+          </button>
+        </div>
+        <div class="feed-body" id="feed-body" tabindex="-1"></div>
+      </section>
+      <section id="detail" class="detail" aria-labelledby="detail-title" hidden>
+        <div class="detail-header">
+          <button id="detail-close" class="quiet">
+            <i data-icon="chevron"></i>Volver</button
+          ><button id="detail-map"><i data-icon="pin"></i>Ver en mapa</button>
+        </div>
+        <div id="detail-body" class="detail-body"></div>
+      </section>
+      <div id="pick-message" hidden>
+        <span>Haz clic en el lugar de tu publicación</span
+        ><button id="pick-cancel">Cancelar</button>
+      </div>
+    </main>
+    <nav class="mobile-nav" aria-label="Navegación móvil">
+      <button data-nav="explore" aria-current="page">
+        <i data-icon="map"></i>Explorar</button
+      ><button data-nav="communities">
+        <i data-icon="users"></i>Comunidades</button
+      ><button data-nav="saved"><i data-icon="save"></i>Guardados</button
+      ><button data-nav="profile"><i data-icon="user"></i>Perfil</button>
+    </nav>
+    <dialog class="dialog" id="filters-dialog" aria-labelledby="filters-title">
+      <div class="dialog-heading">
+        <h2 id="filters-title">Encuentra tu panorama</h2>
+        <button
+          class="icon-button"
+          data-close="filters-dialog"
+          aria-label="Cerrar filtros"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div id="filter-sections"></div>
+      <div class="filter-section filter-radius">
+        <h3>Distancia desde Puerto Montt</h3>
+        <label for="filter-radius"
+          ><span>Centro de la ciudad</span
+          ><output id="radius-output">Sin límite</output></label
+        ><input
+          id="filter-radius"
+          type="range"
+          min="0"
+          max="30"
+          step="5"
+          value="0"
+        /><small
+          >Distancia en línea recta desde el centro de Puerto Montt</small
+        >
+      </div>
+      <div class="form-actions">
+        <button id="filters-reset" class="quiet">Restablecer</button
+        ><button id="filters-apply" class="primary">Ver publicaciones</button>
+      </div>
+    </dialog>
+    <dialog class="dialog" id="post-dialog" aria-labelledby="post-dialog-title">
+      <div class="dialog-heading">
+        <h2 id="post-dialog-title">Crear publicación</h2>
+        <button
+          class="icon-button"
+          data-close="post-dialog"
+          aria-label="Cerrar publicación"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <p class="dialog-intro" id="post-intro">
+        Comparte una actividad o un lugar de encuentro. Tu propuesta pasa por
+        revisión del equipo moderador.
+      </p>
+      <form id="post-form">
+        <input type="hidden" id="post-id" />
+        <div class="form-row">
+          <label
+            >Publicar en<select id="post-community">
+              <option value="">Publicación independiente</option>
+            </select></label
+          ><label
+            >Interés<select id="post-category">
+              <option value="sport">Deportes</option>
+              <option value="outdoor">Aire libre</option>
+              <option value="culture">Arte y cultura</option>
+              <option value="local">Ferias y barrio</option>
+            </select></label
+          >
+        </div>
+        <label
+          >Título<input
+            id="post-title-input"
+            required
+            maxlength="120"
+            placeholder="¿Qué tienes en mente?" /></label
+        ><label
+          >Cuéntale a la comunidad<textarea
+            id="post-description"
+            rows="3"
+            maxlength="4000"
+            required
+            placeholder="De qué se trata, dónde se encuentran y qué hay que saber"
+          ></textarea>
+        </label>
+        <div class="form-row">
+          <label
+            >Ciudad<select id="post-city">
+              <option value="montt">Puerto Montt</option>
+              <option value="varas">Puerto Varas</option>
+            </select></label
+          ><label
+            >Tipo<select id="post-kind">
+              <option value="event">Actividad o evento</option>
+              <option value="place">Lugar de encuentro</option>
+            </select></label
+          >
+        </div>
+        <label id="post-recurring-label" class="moderator-check"
+          ><input id="post-recurring" type="checkbox" />Actividad recurrente o
+          disponible todo el año</label
+        >
+        <div class="form-row">
+          <label id="post-date-label"
+            >Fecha y hora<input id="post-date" type="datetime-local" /></label
+          ><label
+            >Ritmo<select id="post-pace">
+              <option value="active">Más movimiento</option>
+              <option value="calm">Algo tranquilo</option>
+            </select></label
+          >
+        </div>
+        <label id="post-schedule-label" hidden
+          >Horario o disponibilidad<input
+            id="post-schedule"
+            maxlength="120"
+            placeholder="Por ejemplo: todos los días, de 10:00 a 18:00"
+        /></label>
+        <div class="location-field">
+          <div>
+            <strong>Ubicación en el mapa</strong>
+            <p id="post-location-text">Elige el punto de encuentro</p>
+          </div>
+          <button id="post-pick" type="button">
+            <i data-icon="pin"></i>Elegir lugar
+          </button>
+        </div>
+        <input type="hidden" id="post-lat" /><input
+          type="hidden"
+          id="post-lng"
+        /><label
+          ><span class="upload-label"
+            >Imagen opcional<button
+              class="text-button"
+              id="remove-photo"
+              type="button"
+              hidden
+            >
+              Quitar
+            </button></span
+          ><input
+            id="post-image"
+            class="image-input"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+          /><span class="field-help"
+            >Tu publicación puede ser solo texto. Adjunta tu propia imagen si
+            quieres, hasta 5 MB.</span
+          ></label
+        ><img
+          id="post-image-preview"
+          class="image-preview"
+          alt="Vista previa de la imagen que adjuntaste"
+          hidden
+        />
+        <div id="moderator-post-fields" hidden>
+          <label
+            >Visibilidad<select id="post-status">
+              <option value="published">Publicada</option>
+              <option value="pending">Pendiente de revisión</option>
+              <option value="rejected">Rechazada</option>
+            </select></label
+          ><label class="moderator-check"
+            ><input id="post-featured" type="checkbox" /> Destacar en el mapa
+            desde lejos</label
+          >
+        </div>
+        <p id="post-error" class="form-error" role="alert"></p>
+        <div class="form-actions">
+          <button type="button" class="quiet" data-close="post-dialog">
+            Cancelar</button
+          ><button class="primary" id="post-submit" type="submit">
+            Enviar a revisión
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog
+      class="dialog"
+      id="community-dialog"
+      aria-labelledby="community-dialog-title"
+    >
+      <div class="dialog-heading">
+        <h2 id="community-dialog-title">Crear una comunidad</h2>
+        <button
+          class="icon-button"
+          data-close="community-dialog"
+          aria-label="Cerrar comunidad"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <p class="dialog-intro">
+        Un lugar para las personas que comparten un interés. Las comunidades
+        nuevas pasan por revisión.
+      </p>
+      <form id="community-form">
+        <label
+          >Nombre<input
+            id="community-name"
+            required
+            minlength="3"
+            maxlength="60"
+            placeholder="Por ejemplo: Ciclismo en Puerto Montt" /></label
+        ><label
+          >Interés<select id="community-category">
+            <option value="sport">Deportes</option>
+            <option value="outdoor">Aire libre</option>
+            <option value="culture">Arte y cultura</option>
+            <option value="local">Ferias y barrio</option>
+          </select></label
+        ><label
+          >Acerca de la comunidad<textarea
+            id="community-description"
+            rows="3"
+            required
+            maxlength="600"
+            placeholder="Qué quieren compartir y a quiénes invitan"
+          ></textarea>
+        </label>
+        <p id="community-error" class="form-error" role="alert"></p>
+        <div class="form-actions">
+          <button class="primary" type="submit">Proponer comunidad</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="dialog" id="profile-dialog" aria-labelledby="profile-title">
+      <div class="dialog-heading">
+        <h2 id="profile-title">Tu perfil</h2>
+        <button
+          class="icon-button"
+          data-close="profile-dialog"
+          aria-label="Cerrar perfil"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <div id="profile-content"></div>
+    </dialog>
+    <dialog
+      class="dialog"
+      id="profile-edit-dialog"
+      aria-labelledby="profile-edit-title"
+    >
+      <div class="dialog-heading">
+        <h2 id="profile-edit-title">Cómo apareces</h2>
+        <button
+          class="icon-button"
+          data-close="profile-edit-dialog"
+          aria-label="Cerrar edición de perfil"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <p class="dialog-intro">
+        Elige el nombre visible y una breve descripción para tu perfil. Tu
+        nombre de usuario de acceso se conserva.
+      </p>
+      <form id="profile-form">
+        <label
+          >Nombre visible<input
+            id="profile-name"
+            required
+            minlength="2"
+            maxlength="30"
+            autocomplete="nickname"
+            placeholder="Tu nombre o apodo" /></label
+        ><label
+          >Sobre ti<textarea
+            id="profile-bio"
+            rows="2"
+            maxlength="180"
+            placeholder="Qué te gusta hacer por aquí"
+          ></textarea>
+        </label>
+        <p id="profile-error" class="form-error" role="alert"></p>
+        <div class="form-actions">
+          <button class="primary" type="submit">Guardar perfil</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog
+      class="dialog"
+      id="moderation-dialog"
+      aria-labelledby="moderation-title"
+    >
+      <div class="dialog-heading">
+        <h2 id="moderation-title">Revisar comunidad</h2>
+        <button
+          class="icon-button"
+          data-close="moderation-dialog"
+          aria-label="Cerrar revisión"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <p class="dialog-intro">
+        Revisa las propuestas de la comunidad antes de publicarlas. Solo el
+        equipo moderador puede acceder.
+      </p>
+      <div class="dialog-tabs">
+        <button data-review="posts" aria-selected="true">Publicaciones</button
+        ><button data-review="communities" aria-selected="false">
+          Comunidades</button
+        ><button data-review="reports" aria-selected="false">Reportes</button>
+      </div>
+      <div id="moderation-content"></div>
+    </dialog>
+    <dialog class="dialog" id="share-dialog" aria-labelledby="share-title">
+      <div class="dialog-heading">
+        <h2 id="share-title">Compartir publicación</h2>
+        <button
+          class="icon-button"
+          data-close="share-dialog"
+          aria-label="Cerrar enlace"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <p class="dialog-intro">
+        Comparte este enlace para abrir la publicación. Las propuestas
+        pendientes solo son visibles para su autor y el equipo moderador.
+      </p>
+      <div class="share-field">
+        <input
+          id="share-url"
+          readonly
+          aria-label="Enlace de publicación"
+        /><button id="share-copy" class="primary">Copiar</button>
+      </div>
+    </dialog>
+    <dialog class="dialog" id="report-dialog" aria-labelledby="report-title">
+      <div class="dialog-heading">
+        <h2 id="report-title">Reportar publicación</h2>
+        <button
+          class="icon-button"
+          data-close="report-dialog"
+          aria-label="Cerrar reporte"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <p class="dialog-intro">
+        El equipo revisa contenido fuera de tema, inapropiado o con datos
+        personales.
+      </p>
+      <form id="report-form">
+        <label
+          >Qué debería revisar el equipo<select id="report-reason">
+            <option>Contenido inapropiado</option>
+            <option>Datos personales</option>
+            <option>Información engañosa</option>
+            <option>Fuera de tema</option>
+          </select></label
+        ><label
+          >Información adicional<textarea
+            id="report-text"
+            rows="2"
+            maxlength="500"
+          ></textarea>
+        </label>
+        <div class="form-actions">
+          <button class="primary" type="submit">Enviar reporte</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="dialog" id="auth-dialog" aria-labelledby="auth-title">
+      <div class="dialog-heading">
+        <h2 id="auth-title">Iniciar sesión</h2>
+        <button
+          class="icon-button"
+          data-close="auth-dialog"
+          aria-label="Cerrar acceso"
+        >
+          <i data-icon="close"></i>
+        </button>
+      </div>
+      <p class="dialog-intro" id="auth-description">
+        Tu cuenta para publicar, guardar y conversar en Panorama.
+      </p>
+      <form id="auth-form">
+        <label
+          >Nombre de usuario<input
+            id="auth-username"
+            required
+            maxlength="150"
+            autocomplete="username" /></label
+        ><label
+          >Contraseña<input
+            id="auth-password"
+            type="password"
+            required
+            autocomplete="current-password"
+        /></label>
+        <p id="auth-error" class="form-error" role="alert"></p>
+        <button id="auth-submit" type="submit" class="primary">
+          Iniciar sesión
+        </button>
+      </form>
+      <button id="auth-toggle" class="text-button">
+        ¿No tienes cuenta? Crear una cuenta
+      </button>
+    </dialog>
+    <div class="toast" id="toast" role="status" hidden></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="/static/js/panorama.js?v={{ asset_version }}"></script>
+  </body>
 </html>
