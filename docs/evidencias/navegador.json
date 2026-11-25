@@ -1,0 +1,61 @@
+{
+  "browser": "158.0.4370.33",
+  "checks": [
+    {
+      "id": "CP29",
+      "test": "Mapa y lista en escritorio 1366x768",
+      "observed": 4,
+      "passed": true
+    },
+    {
+      "id": "CP30",
+      "test": "Sin desbordamiento a 360x800",
+      "observed": [
+        {
+          "url": "/",
+          "scroll": 360,
+          "viewport": 360
+        },
+        {
+          "url": "/activity/1/",
+          "scroll": 360,
+          "viewport": 360
+        },
+        {
+          "url": "/community/1/",
+          "scroll": 360,
+          "viewport": 360
+        },
+        {
+          "url": "/account/register/",
+          "scroll": 360,
+          "viewport": 360
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "CP31",
+      "test": "Fallo de cartografía conserva lista y ficha",
+      "observed": "El mapa no está disponible. Puedes explorar todas las actividades en la lista.",
+      "passed": true
+    },
+    {
+      "id": "CP32",
+      "test": "Navegador: propuesta, aprobación y asistencia",
+      "observed": {
+        "pk": "5",
+        "approved": true,
+        "attendance": true
+      },
+      "passed": true
+    },
+    {
+      "id": "CP33",
+      "test": "Navegador: publicación y comentario",
+      "observed": 1,
+      "passed": true
+    }
+  ],
+  "errors": []
+}

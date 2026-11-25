@@ -1,243 +1,304 @@
 import json
+from datetime import date, time
+from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
-from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import AuthenticationForm
+from django.core.exceptions import ValidationError, PermissionDenied
+from django.db import transaction, IntegrityError
+from django.db.models import F, Q, Prefetch
+from django.http import JsonResponse, Http404
 from django.middleware.csrf import get_token
-from django.shortcuts import render
-from django.utils.dateparse import parse_datetime
-from django.views.decorators.http import require_GET, require_http_methods, require_POST
+from django.shortcuts import render, redirect, get_object_or_404
+from django.utils import timezone
+from django.views.decorators.http import require_GET, require_POST
+from .models import *
+from .forms import RegistroForm, PerfilForm, ComunidadForm, LugarForm, ActividadForm, TextoForm, MotivoForm
+from .services import publicas, visible, moderar, asistir, CONTENIDOS
 
-from .models import Actividad
 
-
-def _validar_coordenadas(lat, lng):
+def filtradas(request):
+    qs = publicas().select_related('comunidad', 'lugar')
+    for param, field in [('zone', 'zona'), ('category', 'categoria')]:
+        value = request.GET.get(param)
+        if value and value != 'all':
+            qs = qs.filter(**{field: value})
+    if request.GET.get('q'):
+        qs = qs.filter(titulo__icontains=request.GET['q'])
     try:
-        lat_val = float(lat)
-        lng_val = float(lng)
-    except (TypeError, ValueError):
-        return None, None, "Latitud y longitud deben ser números válidos."
+        if request.GET.get('date'):
+            d = date.fromisoformat(request.GET['date'])
+            qs = qs.filter(Q(todo_el_ano=True) | Q(fecha_hora__date__lte=d, fin__date__gte=d))
+        for param, lookup, habitual in [('from', 'fecha_hora__time__gte', 'hora_inicio__gte'), ('to', 'fecha_hora__time__lte', 'hora_inicio__lte')]:
+            if request.GET.get(param):
+                t = time.fromisoformat(request.GET[param])
+                qs = qs.filter(Q(todo_el_ano=True, **{habitual: t}) | Q(todo_el_ano=False, **{lookup: t}))
+        if request.GET.get('from') and request.GET.get('to') and request.GET['from'] > request.GET['to']:
+            raise ValueError
+    except ValueError:
+        raise ValidationError('Fecha u hora de filtro inválida.')
+    return qs
 
-    if not (-90.0 <= lat_val <= 90.0) or not (-180.0 <= lng_val <= 180.0):
-        return None, None, "Coordenadas fuera de rango geográfico válido."
 
-    return lat_val, lng_val, None
-
-
-def _parsear_fecha_opcional(fecha_raw):
-    if not fecha_raw:
-        return None, None
-    parsed = parse_datetime(str(fecha_raw))
-    if parsed is None:
-        return None, "Formato de fecha y hora inválido."
-    return parsed, None
+def serializar(a):
+    return {'id': a.pk, 'title': a.titulo, 'category': a.categoria, 'zone': a.zona, 'lat': a.latitud, 'lng': a.longitud,
+            'date': timezone.localtime(a.fecha_hora).isoformat() if a.fecha_hora else '', 'description': a.descripcion,
+            'all_year': a.todo_el_ano, 'schedule': a.horario, 'featured': a.destacado, 'url': f'/activity/{a.pk}/'}
 
 
 def home(request):
-    return render(request, "index.html")
+    try:
+        acts = list(filtradas(request))
+    except ValidationError as e:
+        messages.error(request, e.messages[0])
+        acts = []
+    return render(request, 'index.html', {'activities': acts, 'map_data': [serializar(a) for a in acts], 'zones': Actividad.Zona.choices, 'categories': Actividad.Categoria.choices})
 
 
 @require_GET
 def csrf_view(request):
-    return JsonResponse({"csrfToken": get_token(request)})
+    return JsonResponse({'csrfToken': get_token(request)})
 
 
 @require_GET
 def session_status_view(request):
-    user = request.user
-    if user.is_authenticated:
-        return JsonResponse({
-            "authenticated": True,
-            "username": user.username,
-            "is_admin": bool(user.is_staff or user.is_superuser),
-        })
-    return JsonResponse({
-        "authenticated": False,
-        "username": None,
-        "is_admin": False,
-    })
+    return JsonResponse({'authenticated': request.user.is_authenticated, 'username': request.user.username if request.user.is_authenticated else None, 'is_admin': request.user.is_staff})
 
 
 @require_POST
 def login_view(request):
     try:
-        data = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "JSON inválido."}, status=400)
-
-    username = (data.get("username") or "").strip()
-    password = data.get("password") or ""
-
-    if not username or not password:
-        return JsonResponse({"error": "Debes ingresar usuario y contraseña."}, status=400)
-
-    user = authenticate(request, username=username, password=password)
+        data = json.loads(request.body)
+        if not isinstance(data, dict):
+            raise ValueError
+        user = authenticate(request, username=data.get('username'), password=data.get('password'))
+    except (ValueError, TypeError):
+        return JsonResponse({'error': 'JSON inválido.'}, status=400)
     if user is None:
-        return JsonResponse({"error": "Credenciales inválidas."}, status=401)
-
+        return JsonResponse({'error': 'Credenciales inválidas.'}, status=401)
     login(request, user)
-    return JsonResponse({
-        "authenticated": True,
-        "username": user.username,
-        "is_admin": bool(user.is_staff or user.is_superuser),
-    })
+    return JsonResponse({'authenticated': True, 'username': user.username, 'is_admin': user.is_staff})
 
 
 @require_POST
 def logout_view(request):
     logout(request)
-    return JsonResponse({"authenticated": False})
+    if request.path.startswith('/api/'):
+        return JsonResponse({'authenticated': False})
+    return redirect('home')
 
 
-def _serialize_actividad(act):
-    return {
-        "id": act.id,
-        "title": act.titulo,
-        "category": act.categoria,
-        "zone": act.zona,
-        "lat": act.latitud,
-        "lng": act.longitud,
-        "all_year": act.todo_el_ano,
-        "schedule": act.horario,
-        "date": act.fecha_hora.strftime("%Y-%m-%dT%H:%M") if act.fecha_hora else "",
-        "description": act.descripcion,
-        "featured": act.destacado,
-    }
-
-
-@require_http_methods(["GET", "POST"])
+@require_GET
 def actividades_collection_view(request):
-    if request.method == "GET":
-        qs = Actividad.objects.all()
-        zona = request.GET.get("zone")
-        categoria = request.GET.get("category")
-
-        if zona and zona != "all":
-            qs = qs.filter(zona=zona)
-        if categoria and categoria != "all":
-            qs = qs.filter(categoria=categoria)
-
-        return JsonResponse({
-            "activities": [_serialize_actividad(a) for a in qs]
-        })
-
-    # POST: solo usuarios admin (staff o superuser)
-    if not request.user.is_authenticated:
-        return JsonResponse({"error": "Debes iniciar sesión."}, status=401)
-    if not (request.user.is_staff or request.user.is_superuser):
-        return JsonResponse({"error": "Solo un administrador puede añadir actividades."}, status=403)
-
     try:
-        data = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "JSON inválido."}, status=400)
+        return JsonResponse({'activities': [serializar(a) for a in filtradas(request)]})
+    except ValidationError as e:
+        return JsonResponse({'error': e.messages[0]}, status=400)
 
-    titulo = (data.get("title") or "").strip()
-    if not titulo:
-        return JsonResponse({"error": "El título es obligatorio."}, status=400)
 
-    lat, lng, coord_err = _validar_coordenadas(data.get("lat"), data.get("lng"))
-    if coord_err:
-        return JsonResponse({"error": coord_err}, status=400)
+def cuenta(request, accion):
+    if accion not in ['register', 'login']:
+        raise Http404
+    cls = RegistroForm if accion == 'register' else AuthenticationForm
+    form = cls(data=request.POST if request.method == 'POST' else None)
+    if request.method == 'POST' and form.is_valid():
+        try:
+            with transaction.atomic():
+                user = form.save() if accion == 'register' else form.get_user()
+                if accion == 'register':
+                    Perfil.objects.create(usuario=user, nombre=user.username)
+                login(request, user)
+            return redirect('home')
+        except IntegrityError:
+            form.add_error('email', 'Este correo ya está registrado.')
+    return render(request, 'form.html', {'form': form, 'title': 'Crear cuenta' if accion == 'register' else 'Iniciar sesión', 'submit': 'Continuar'})
 
-    categoria = data.get("category") or Actividad.Categoria.FERIAS
-    if categoria not in Actividad.Categoria.values:
-        return JsonResponse({"error": "Categoría no válida."}, status=400)
 
-    zona = data.get("zone") or Actividad.Zona.PUERTO_MONTT
-    if zona not in Actividad.Zona.values:
-        return JsonResponse({"error": "Zona no válida."}, status=400)
+@login_required
+def perfil(request):
+    obj, _ = Perfil.objects.get_or_create(usuario=request.user, defaults={'nombre': request.user.username})
+    form = PerfilForm(request.POST if request.method == 'POST' else None, instance=obj)
+    if request.method == 'POST' and form.is_valid():
+        form.save()
+        messages.success(request, 'Perfil actualizado.')
+        return redirect('perfil')
+    return render(request, 'form.html', {'form': form, 'title': 'Mi perfil', 'submit': 'Guardar cambios'})
 
-    todo_el_ano = bool(data.get("all_year", False))
-    horario = (data.get("schedule") or "").strip()
 
-    if todo_el_ano:
-        fecha_dt = None
+def comunidades(request):
+    return render(request, 'comunidades.html', {'comunidades': Comunidad.objects.filter(estado='APROBADO'), 'lugares': Lugar.objects.filter(estado='APROBADO')})
+
+
+@login_required
+def proponer(request, tipo, pk=None):
+    cls = {'actividad': ActividadForm, 'comunidad': ComunidadForm, 'lugar': LugarForm}.get(tipo)
+    if not cls:
+        raise Http404
+    obj = None
+    if pk:
+        obj = get_object_or_404(Actividad, pk=pk, creado_por=request.user)
+        if obj.estado in ['CANCELADO', 'FINALIZADO', 'RETIRADO'] or (obj.fin and obj.fin <= timezone.now()):
+            raise PermissionDenied('El evento ya no puede editarse.')
+    old_date, old_place, old_end, old_year = (obj.fecha_hora, obj.lugar_id, obj.fin, obj.todo_el_ano) if obj else (None, None, None, None)
+    form = cls(request.POST if request.method == 'POST' else None, instance=obj)
+    if request.method == 'POST' and form.is_valid():
+        item = form.save(commit=False)
+        if tipo == 'actividad':
+            item.creado_por = request.user
+            item.zona, item.latitud, item.longitud = item.lugar.zona, item.lugar.latitud, item.lugar.longitud
+            if not obj or (old_date, old_place, old_end, old_year) != (item.fecha_hora, item.lugar_id, item.fin, item.todo_el_ano) or item.estado == 'RECHAZADO':
+                item.estado = 'PENDIENTE'
+        else:
+            item.autor = request.user
+        item.save()
+        messages.success(request, 'Propuesta guardada. Los cambios de fecha o lugar requieren aprobación.')
+        return redirect('mis_actividades')
+    return render(request, 'form.html', {'form': form, 'title': ('Editar evento' if pk else f'Proponer {tipo}'), 'submit': 'Guardar propuesta'})
+
+
+def detalle(request, pk):
+    obj = get_object_or_404(Actividad.objects.select_related('comunidad', 'lugar', 'creado_por'), pk=pk)
+    if not visible(obj) and not (request.user.is_staff or request.user == obj.creado_por):
+        raise Http404
+    Actividad.objects.filter(pk=pk).update(aperturas=F('aperturas') + 1)
+    joined = request.user.is_authenticated and obj.asistencias.filter(usuario=request.user).exists()
+    return render(request, 'detalle.html', {'activity': obj, 'joined': joined, 'total': obj.asistencias.count(), 'public': visible(obj)})
+
+
+@login_required
+@require_POST
+def rsvp(request, pk):
+    try:
+        asistir(request.user, pk, request.POST.get('cancelar') == '1')
+        messages.success(request, 'Tu intención de asistencia se actualizó. No reserva cupo.')
+    except (ValidationError, Actividad.DoesNotExist) as e:
+        messages.error(request, e.messages[0] if isinstance(e, ValidationError) else 'Evento inexistente.')
+    return redirect('detalle', pk=pk)
+
+
+@login_required
+def mis_actividades(request):
+    return render(request, 'mis_actividades.html', {'activities': Actividad.objects.filter(creado_por=request.user), 'propuestas': list(Comunidad.objects.filter(autor=request.user)) + list(Lugar.objects.filter(autor=request.user))})
+
+
+@login_required
+@require_POST
+def cancelar(request, pk):
+    obj = get_object_or_404(Actividad, pk=pk, creado_por=request.user)
+    if obj.estado not in ['CANCELADO', 'RETIRADO', 'FINALIZADO']:
+        obj.estado = 'CANCELADO'
+        obj.save(update_fields=['estado'])
+    return redirect('mis_actividades')
+
+
+def foro(request, pk):
+    comunidad = get_object_or_404(Comunidad, pk=pk, estado='APROBADO')
+    form = TextoForm(request.POST if request.method == 'POST' else None)
+    if request.method == 'POST':
+        if not request.user.is_authenticated:
+            raise PermissionDenied
+        if form.is_valid():
+            Publicacion.objects.create(comunidad=comunidad, autor=request.user, texto=form.cleaned_data['texto'])
+            return redirect('foro', pk=pk)
+    posts = comunidad.publicaciones.filter(estado='APROBADO').select_related('autor').prefetch_related(Prefetch('comentarios', queryset=Comentario.objects.filter(estado='APROBADO').select_related('autor'))).order_by('-fecha')
+    return render(request, 'foro.html', {'comunidad': comunidad, 'posts': posts, 'form': form})
+
+
+@login_required
+@require_POST
+def comentar(request, pk):
+    obj = get_object_or_404(Publicacion, pk=pk)
+    if not visible(obj):
+        raise Http404
+    form = TextoForm(request.POST)
+    if form.is_valid() and len(form.cleaned_data['texto']) <= 1500:
+        Comentario.objects.create(publicacion=obj, autor=request.user, texto=form.cleaned_data['texto'])
     else:
-        fecha_dt, date_err = _parsear_fecha_opcional(data.get("date"))
-        if date_err:
-            return JsonResponse({"error": date_err}, status=400)
-
-    act = Actividad.objects.create(
-        titulo=titulo,
-        categoria=categoria,
-        zona=zona,
-        latitud=lat,
-        longitud=lng,
-        todo_el_ano=todo_el_ano,
-        horario=horario,
-        fecha_hora=fecha_dt,
-        descripcion=(data.get("description") or "").strip(),
-        destacado=bool(data.get("featured", False)),
-        creado_por=request.user,
-    )
-
-    return JsonResponse({"activity": _serialize_actividad(act)}, status=201)
+        messages.error(request, 'El comentario debe contener entre 1 y 1500 caracteres.')
+    return redirect('foro', pk=obj.comunidad_id)
 
 
-@require_http_methods(["PUT", "PATCH", "DELETE"])
-def actividad_detail_view(request, actividad_id):
-    if not request.user.is_authenticated:
-        return JsonResponse({"error": "Debes iniciar sesión."}, status=401)
-    if not (request.user.is_staff or request.user.is_superuser):
-        return JsonResponse({"error": "Solo un administrador puede modificar o eliminar actividades."}, status=403)
+@login_required
+def reportar(request, tipo, pk):
+    model = CONTENIDOS.get(tipo)
+    if not model:
+        raise Http404
+    obj = get_object_or_404(model, pk=pk)
+    if not visible(obj):
+        raise Http404
+    form = MotivoForm(request.POST if request.method == 'POST' else None)
+    if request.method == 'POST' and form.is_valid():
+        Reporte.objects.create(tipo=tipo, objeto_id=pk, autor=request.user, motivo=form.cleaned_data['motivo'])
+        messages.success(request, 'Reporte enviado. El contenido permanece visible hasta la decisión de moderación.')
+        return redirect('home')
+    return render(request, 'form.html', {'title': 'Reportar contenido', 'form': form, 'submit': 'Enviar reporte'})
 
-    try:
-        act = Actividad.objects.get(pk=actividad_id)
-    except Actividad.DoesNotExist:
-        return JsonResponse({"error": "Actividad no encontrada."}, status=404)
 
-    if request.method == "DELETE":
-        act.delete()
-        return JsonResponse({"deleted": True, "id": actividad_id})
+@login_required
+def moderacion(request):
+    if not request.user.is_staff:
+        raise PermissionDenied
+    pendientes = [(tipo, obj) for tipo, model in CONTENIDOS.items() for obj in model.objects.filter(estado='PENDIENTE')]
+    return render(request, 'moderacion.html', {'pendientes': pendientes, 'reportes': Reporte.objects.filter(estado='ABIERTO'), 'audit': Auditoria.objects.select_related('responsable').order_by('-fecha')[:30]})
 
-    try:
-        data = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"error": "JSON inválido."}, status=400)
 
-    if "title" in data:
-        titulo = (data.get("title") or "").strip()
-        if not titulo:
-            return JsonResponse({"error": "El título no puede estar vacío."}, status=400)
-        act.titulo = titulo
+@login_required
+def decidir(request, tipo, pk):
+    if not request.user.is_staff:
+        raise PermissionDenied
+    if tipo not in CONTENIDOS:
+        raise Http404
+    obj = get_object_or_404(CONTENIDOS[tipo], pk=pk)
+    form = MotivoForm(request.POST if request.method == 'POST' else None)
+    if request.method == 'POST' and form.is_valid():
+        try:
+            moderar(request.user, tipo, pk, request.POST.get('decision'), form.cleaned_data['motivo'])
+            messages.success(request, 'Decisión registrada con auditoría.')
+            return redirect('moderacion')
+        except ValidationError as e:
+            form.add_error(None, e)
+    return render(request, 'decision.html', {'form': form, 'obj': obj, 'tipo': tipo})
 
-    if "category" in data and data["category"]:
-        if data["category"] not in Actividad.Categoria.values:
-            return JsonResponse({"error": "Categoría no válida."}, status=400)
-        act.categoria = data["category"]
 
-    if "zone" in data and data["zone"]:
-        if data["zone"] not in Actividad.Zona.values:
-            return JsonResponse({"error": "Zona no válida."}, status=400)
-        act.zona = data["zone"]
+@login_required
+def resolver(request, pk):
+    if not request.user.is_staff:
+        raise PermissionDenied
+    obj = get_object_or_404(Reporte, pk=pk)
+    form = MotivoForm(request.POST if request.method == 'POST' else None)
+    if request.method == 'POST' and form.is_valid():
+        with transaction.atomic():
+            obj = Reporte.objects.select_for_update().get(pk=pk)
+            if obj.estado != 'ABIERTO':
+                raise PermissionDenied('El reporte ya está cerrado.')
+            obj.estado, obj.resolucion = 'CERRADO', form.cleaned_data['motivo']
+            obj.responsable, obj.resuelto_en = request.user, timezone.now()
+            obj.save()
+            Auditoria.objects.create(tipo='reporte', objeto_id=pk, responsable=request.user, decision='CERRADO', motivo=obj.resolucion)
+        return redirect('moderacion')
+    return render(request, 'form.html', {'title': 'Resolver reporte sin retiro automático', 'form': form, 'submit': 'Cerrar reporte'})
 
-    if "lat" in data or "lng" in data:
-        lat_input = data["lat"] if "lat" in data else act.latitud
-        lng_input = data["lng"] if "lng" in data else act.longitud
-        lat, lng, coord_err = _validar_coordenadas(lat_input, lng_input)
-        if coord_err:
-            return JsonResponse({"error": coord_err}, status=400)
-        act.latitud = lat
-        act.longitud = lng
 
-    if "description" in data:
-        act.descripcion = (data.get("description") or "").strip()
+@login_required
+@require_POST
+def distintivo(request, pk):
+    if not request.user.is_staff:
+        raise PermissionDenied
+    with transaction.atomic():
+        obj = get_object_or_404(Actividad.objects.select_for_update(), pk=pk)
+        target = request.POST.get('target', 'evento')
+        if target not in ['evento', 'organizador']:
+            raise PermissionDenied
+        if target == 'evento':
+            obj.destacado = not obj.destacado
+            obj.save(update_fields=['destacado'])
+        elif obj.creado_por:
+            perfil, _ = Perfil.objects.get_or_create(usuario=obj.creado_por, defaults={'nombre': obj.creado_por.username})
+            perfil.verificado = not perfil.verificado
+            perfil.save()
+        Auditoria.objects.create(tipo='actividad', objeto_id=pk, responsable=request.user, decision='DISTINTIVO', motivo=f'Cambio de distintivo simulado de {target}')
+    return redirect('detalle', pk=pk)
 
-    if "featured" in data:
-        act.destacado = bool(data["featured"])
 
-    if "all_year" in data:
-        act.todo_el_ano = bool(data["all_year"])
-        if act.todo_el_ano:
-            act.fecha_hora = None
-
-    if "schedule" in data:
-        act.horario = (data.get("schedule") or "").strip()
-
-    if "date" in data and not act.todo_el_ano:
-        fecha_dt, date_err = _parsear_fecha_opcional(data.get("date"))
-        if date_err:
-            return JsonResponse({"error": date_err}, status=400)
-        act.fecha_hora = fecha_dt
-
-    act.save()
-    return JsonResponse({"activity": _serialize_actividad(act)})
+def privacidad(request):
+    return render(request, 'privacidad.html')

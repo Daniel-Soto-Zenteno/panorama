@@ -17,3 +17,7 @@ build/
 # Archivos del sistema / editor
 .DS_Store
 Thumbs.db
+.demo-credentials.txt
+docs/qa/
+.local/
+Panorama_Entrega_Evaluacion_3.zip

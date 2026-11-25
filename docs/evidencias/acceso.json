@@ -1,0 +1,24 @@
+{
+  "id": "CP36",
+  "test": "Propuesta móvil y recorrido parcial por teclado",
+  "sizes": [
+    {
+      "route": "/propose/actividad/",
+      "width": 360,
+      "scroll": 360
+    },
+    {
+      "route": "/profile/",
+      "width": 360,
+      "scroll": 360
+    },
+    {
+      "route": "/mine/",
+      "width": 360,
+      "scroll": 360
+    }
+  ],
+  "firstFocus": "Saltar al contenido",
+  "nextFocus": "id_descripcion",
+  "passed": true
+}
